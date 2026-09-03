@@ -1,0 +1,481 @@
+<div class="app-container">
+  <!-- Top Navigation Bar -->
+  <header class="header">
+    <div class="logo-group">
+      <i class="fa-solid fa-bolt logo-icon"></i>
+      <span class="logo-title">GridSense AI</span>
+      <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px; border-left: 1px solid var(--border); padding-left: 8px;">
+        Electricity Fault Detection, GIS & Customer Impact Platform
+      </span>
+    </div>
+
+    <div class="nav-links">
+      <button class="nav-btn" [class.active]="activeTab === 'map'" (click)="switchTab('map')">
+        <i class="fa-solid fa-map-location-dot"></i> GIS Network Map
+      </button>
+      <button class="nav-btn" [class.active]="activeTab === 'dashboard'" (click)="switchTab('dashboard')">
+        <i class="fa-solid fa-gauge-high"></i> Control Room Dashboard
+      </button>
+      <button class="nav-btn" [class.active]="activeTab === 'twin'" (click)="switchTab('twin')">
+        <i class="fa-solid fa-sitemap"></i> Digital Grid Twin
+      </button>
+      <button class="nav-btn" [class.active]="activeTab === 'simulator'" (click)="switchTab('simulator')">
+        <i class="fa-solid fa-vial-circle-check"></i> Fault Simulator
+      </button>
+      <button class="nav-btn" [class.active]="activeTab === 'hotspot'" (click)="switchTab('hotspot')">
+        <i class="fa-solid fa-fire-flame-curved"></i> Risk & Hotspots
+      </button>
+      <button class="nav-btn" [class.active]="activeTab === 'admin'" (click)="switchTab('admin')">
+        <i class="fa-solid fa-file-import"></i> Meter Import & Admin
+      </button>
+    </div>
+
+    <div class="role-selector">
+      <i class="fa-solid fa-user-shield" style="color: var(--accent-cyan)"></i>
+      <span>Role:</span>
+      <select class="role-select" [value]="currentUser.role" (change)="onRoleChange($event)">
+        <option value="ADMIN">ADMIN (Full Access / Unmasked PII)</option>
+        <option value="DISPATCHER">DISPATCHER (Control Room)</option>
+        <option value="FIELD_ENGINEER">FIELD ENGINEER (Masked PII)</option>
+        <option value="GUEST">GUEST (Public View / Masked PII)</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- TAB 1: GIS NETWORK MAP VIEW (Use [hidden] to keep Leaflet DOM instance alive) -->
+  <div class="main-content" [hidden]="activeTab !== 'map'">
+    <!-- Floating Layer Controls -->
+    <div class="gis-control-box">
+      <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; color: var(--accent-cyan);">
+        <i class="fa-solid fa-layer-group"></i> GIS Layer Visibility
+      </div>
+      <label class="layer-toggle">
+        <span>Substations (132/33kV)</span>
+        <input type="checkbox" [(ngModel)]="showSubstations" (change)="renderNetworkNodes()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Feeders (33kV)</span>
+        <input type="checkbox" [(ngModel)]="showFeeders" (change)="renderNetworkNodes()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Network Segments</span>
+        <input type="checkbox" [(ngModel)]="showLines" (change)="renderNetworkNodes()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Transformers</span>
+        <input type="checkbox" [(ngModel)]="showTransformers" (change)="renderNetworkNodes()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Poles</span>
+        <input type="checkbox" [(ngModel)]="showPoles" (change)="renderNetworkNodes()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Smart Meters (GIS Layer)</span>
+        <input type="checkbox" [(ngModel)]="showMeters" (change)="loadNodesAndMeters()" />
+      </label>
+      <label class="layer-toggle">
+        <span>Active Fault Overlay</span>
+        <input type="checkbox" [(ngModel)]="showFaults" (change)="loadFaults()" />
+      </label>
+    </div>
+
+    <!-- Map Container -->
+    <div class="map-container">
+      <div id="map"></div>
+    </div>
+
+    <!-- Side Panel: Click-To-Analyse Asset Intelligence or Fault Detail -->
+    <div class="side-panel">
+      <!-- Scenario A: Asset Intelligence Panel -->
+      <div *ngIf="selectedAssetIntel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-microchip" style="color: var(--accent-cyan)"></i>
+            Asset Intelligence: {{ selectedAssetIntel.asset.name }}
+          </div>
+          <button class="btn btn-secondary" style="padding: 2px 8px;" (click)="selectedAssetIntel = null">✕</button>
+        </div>
+
+        <div class="panel-body">
+          <div style="font-size: 0.85rem; background: var(--bg-card); padding: 10px; border-radius: 6px;">
+            <div><b>Asset ID:</b> {{ selectedAssetIntel.asset.asset_id }}</div>
+            <div><b>Type:</b> {{ selectedAssetIntel.asset.asset_type }}</div>
+            <div><b>Voltage:</b> {{ selectedAssetIntel.asset.voltage_kv }} kV</div>
+            <div><b>Operational Status:</b>
+              <span [class]="selectedAssetIntel.asset.status === 'ACTIVE' ? 'badge badge-active' : 'badge badge-critical'">
+                {{ selectedAssetIntel.asset.status }}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 8px;">
+              <i class="fa-solid fa-users"></i> Connected Customer Impact Analysis
+            </h4>
+            <div class="stat-grid">
+              <div class="stat-card">
+                <div class="stat-label">Total Connected Meters</div>
+                <div class="stat-value" style="color: var(--accent-cyan)">{{ selectedAssetIntel.customerImpact.total }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Critical Facilities</div>
+                <div class="stat-value" style="color: var(--accent-red)">{{ selectedAssetIntel.customerImpact.criticalCustomers }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Residential</div>
+                <div class="stat-value">{{ selectedAssetIntel.customerImpact.residential }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Commercial</div>
+                <div class="stat-value">{{ selectedAssetIntel.customerImpact.commercial }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Industrial</div>
+                <div class="stat-value">{{ selectedAssetIntel.customerImpact.industrial }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Government / Agriculture</div>
+                <div class="stat-value">{{ selectedAssetIntel.customerImpact.government + selectedAssetIntel.customerImpact.agricultural }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.9rem; color: var(--accent-amber); margin-bottom: 8px;">
+              <i class="fa-solid fa-shield-halved"></i> AI Grid Predictive Risk
+            </h4>
+            <div style="background: var(--bg-card); padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Risk Score</div>
+                <div style="font-size: 1.5rem; font-weight: 700;">{{ selectedAssetIntel.riskAssessment.riskScore }} / 100</div>
+              </div>
+              <div [class]="selectedAssetIntel.riskAssessment.riskScore > 75 ? 'badge badge-critical' : 'badge badge-high'">
+                {{ selectedAssetIntel.riskAssessment.riskLevel }} RISK
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Connected Meter Sample (PII Masking enforced by Role):</h4>
+            <div style="max-height: 180px; overflow-y: auto;">
+              <div class="meter-list-item" *ngFor="let m of selectedAssetIntel.customerImpact.meters.slice(0, 10)">
+                <div>
+                  <b>{{ m.meter_number }}</b> ({{ m.category_name }})<br/>
+                  <span style="color: var(--text-muted);">Client: {{ m.customer_name }}</span>
+                </div>
+                <span [class]="m.status === 'ACTIVE' ? 'badge badge-active' : 'badge badge-critical'">{{ m.status }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-danger" style="flex: 1;" (click)="simTargetAssetId = selectedAssetIntel.asset.asset_id; switchTab('simulator');">
+              <i class="fa-solid fa-triangle-exclamation"></i> Simulate Fault
+            </button>
+            <button class="btn btn-secondary" style="flex: 1;" (click)="loadNetworkTree(selectedAssetIntel.asset.asset_id); switchTab('twin');">
+              <i class="fa-solid fa-sitemap"></i> View Tree
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scenario B: Selected Active Fault Analysis -->
+      <div *ngIf="selectedFault">
+        <div class="panel-header">
+          <div class="panel-title" style="color: var(--accent-red)">
+            <i class="fa-solid fa-bolt-lightning"></i> Fault Analysis: {{ selectedFault.fault_number }}
+          </div>
+          <button class="btn btn-secondary" style="padding: 2px 8px;" (click)="selectedFault = null">✕</button>
+        </div>
+
+        <div class="panel-body">
+          <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--accent-red); padding: 12px; border-radius: 6px;">
+            <div style="font-weight: 700; font-size: 1.1rem; color: var(--accent-red);">{{ selectedFault.asset_name }}</div>
+            <div style="font-size: 0.85rem; margin-top: 4px;">Fault Type: {{ selectedFault.fault_type }}</div>
+            <div style="font-size: 0.85rem; margin-top: 2px;">Priority: <b>{{ selectedFault.priority }}</b> (Score: {{ selectedFault.priority_score }})</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">{{ selectedFault.priority_explanation }}</div>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-label">Affected Meters</div>
+              <div class="stat-value" style="color: var(--accent-red)">{{ selectedFault.total_affected_meters }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Critical Customers</div>
+              <div class="stat-value" style="color: var(--accent-amber)">{{ selectedFault.critical_customers_affected }}</div>
+            </div>
+            <div class="stat-card" style="grid-column: span 2;">
+              <div class="stat-label">Est. Financial Revenue Exposure</div>
+              <div class="stat-value" style="color: var(--accent-emerald)">${{ selectedFault.estimated_revenue_loss_per_day }} / day</div>
+            </div>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">Affected Smart Meters Detail:</h4>
+            <div style="max-height: 200px; overflow-y: auto;">
+              <div class="meter-list-item" *ngFor="let m of selectedFaultMeters">
+                <div>
+                  <b style="color: var(--accent-red);">{{ m.meter_number }}</b> ({{ m.category_name }})<br/>
+                  <span>Client: {{ m.customer_name }}</span>
+                </div>
+                <span class="badge badge-critical">OUTAGE</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" (click)="restoreFault(selectedFault.id)">
+            <i class="fa-solid fa-circle-check"></i> Restore Power Network
+          </button>
+        </div>
+      </div>
+
+      <!-- Scenario C: Initial Instructions -->
+      <div *ngIf="!selectedAssetIntel && !selectedFault" style="padding: 30px; text-align: center; color: var(--text-muted);">
+        <i class="fa-solid fa-hand-pointer" style="font-size: 2.5rem; color: var(--accent-cyan); margin-bottom: 12px;"></i>
+        <h3>Click Any Network Asset on Map</h3>
+        <p style="font-size: 0.85rem; margin-top: 8px;">Select a Substation, Feeder (JURU-03), Power Line, Transformer (T-104), or Pole to view its live connected Household Smart Meter GIS Intelligence Panel.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: CONTROL ROOM DASHBOARD -->
+  <div class="main-content" *ngIf="activeTab === 'dashboard'" style="padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;">
+    <h2><i class="fa-solid fa-gauge-high" style="color: var(--accent-cyan)"></i> Utility Control Room Operational Status</h2>
+
+    <div class="stat-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="stat-card">
+        <div class="stat-label">Total Connected Meters</div>
+        <div class="stat-value" style="color: var(--accent-cyan)">191</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Currently Affected Outages</div>
+        <div class="stat-value" style="color: var(--accent-red)">{{ totalAffectedMetersCount }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Critical Customer Impact</div>
+        <div class="stat-value" style="color: var(--accent-amber)">{{ totalCriticalAffectedCount }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Network Faults</div>
+        <div class="stat-value" style="color: var(--accent-red)">{{ activeFaultsCount }}</div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+      <!-- Active Faults Table -->
+      <div style="background: var(--bg-secondary); padding: 18px; border-radius: 8px; border: 1px solid var(--border);">
+        <h3 style="margin-bottom: 12px;"><i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red)"></i> Active Fault Incidents</h3>
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted);">
+              <th style="padding: 8px;">Fault #</th>
+              <th>Asset</th>
+              <th>Type</th>
+              <th>Priority</th>
+              <th>Affected Meters</th>
+              <th>Critical</th>
+              <th>Est. Loss/day</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let f of faults" style="border-bottom: 1px solid #334155;">
+              <td style="padding: 10px; font-weight: 700; color: var(--accent-cyan);">{{ f.fault_number }}</td>
+              <td>{{ f.asset_name }}</td>
+              <td>{{ f.fault_type }}</td>
+              <td><span [class]="f.priority === 'CRITICAL' ? 'badge badge-critical' : 'badge badge-high'">{{ f.priority }}</span></td>
+              <td style="font-weight: 700; color: var(--accent-red);">{{ f.total_affected_meters }}</td>
+              <td>{{ f.critical_customers_affected }}</td>
+              <td style="color: var(--accent-emerald);">${{ f.estimated_revenue_loss_per_day }}</td>
+              <td>
+                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.75rem;" (click)="switchTab('map'); selectFault(f);">View on GIS</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Crew Dispatch Panel -->
+      <div style="background: var(--bg-secondary); padding: 18px; border-radius: 8px; border: 1px solid var(--border);">
+        <h3 style="margin-bottom: 12px;"><i class="fa-solid fa-truck-field" style="color: var(--accent-amber)"></i> Field Response Crews</h3>
+        <div *ngFor="let crew of crews" style="background: var(--bg-card); padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between;">
+            <b>{{ crew.crew_name }}</b>
+            <span class="badge badge-active">{{ crew.status }}</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+            Lead: {{ crew.lead_name }} | {{ crew.contact_phone }}
+          </div>
+          <div *ngIf="crew.fault_number" style="font-size: 0.8rem; color: var(--accent-amber); margin-top: 4px;">
+            Assigned to: {{ crew.fault_number }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: DIGITAL GRID TWIN -->
+  <div class="main-content" *ngIf="activeTab === 'twin'" style="padding: 24px; overflow-y: auto;">
+    <h2><i class="fa-solid fa-sitemap" style="color: var(--accent-cyan)"></i> Digital Grid Twin Tree Explorer</h2>
+    <p style="color: var(--text-muted); margin-top: 4px; margin-bottom: 20px;">
+      Traverse network topology from Substation & Feeder downstream to Low-Voltage Transformers, Poles & Meters.
+    </p>
+
+    <div *ngIf="networkTreeData" style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; border: 1px solid var(--border); max-width: 700px;">
+      <div style="font-weight: 700; font-size: 1.2rem; color: var(--accent-cyan);">
+        <i class="fa-solid fa-building-columns"></i> {{ networkTreeData.asset.name }} ({{ networkTreeData.asset.id }})
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+        Total Connected Customer Meters: <b>{{ networkTreeData.customerImpact.total }}</b>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <h4 style="margin-bottom: 8px; font-size: 0.9rem;">Downstream Connected Assets:</h4>
+        <ul class="tree-list">
+          <li class="tree-item" *ngFor="let child of networkTreeData.children" (click)="loadNetworkTree(child.id)">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <i class="fa-solid fa-diagram-project" style="color: var(--accent-cyan)"></i>
+                <b style="margin-left: 8px;">{{ child.type }}: {{ child.name }}</b> ({{ child.id }})
+              </div>
+              <span class="badge badge-medium">{{ child.connectedMetersCount }} connected meters</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: FAULT SIMULATOR -->
+  <div class="main-content" *ngIf="activeTab === 'simulator'" style="padding: 24px; overflow-y: auto;">
+    <h2><i class="fa-solid fa-vial-circle-check" style="color: var(--accent-amber)"></i> Grid Fault Simulator & Impact Predictor</h2>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+      <!-- Simulation Controls -->
+      <div style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>Simulation Parameters</h3>
+        <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label style="font-size: 0.85rem; color: var(--text-muted);">Target Asset ID:</label>
+            <input type="text" [(ngModel)]="simTargetAssetId" (change)="analyzeSimulation()" style="width: 100%; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px;" />
+          </div>
+          <div>
+            <label style="font-size: 0.85rem; color: var(--text-muted);">Fault Type:</label>
+            <select [(ngModel)]="simFaultType" (change)="analyzeSimulation()" style="width: 100%; padding: 8px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+              <option value="TRANSFORMER_FAILURE">Transformer Winding Failure</option>
+              <option value="SINGLE_PHASE_GROUND">Single Phase Ground Fault</option>
+              <option value="LINE_BREAK">Overhead Line Break</option>
+              <option value="VEGETATION_INTERFERENCE">Vegetation Interference</option>
+            </select>
+          </div>
+
+          <button class="btn btn-danger" style="margin-top: 12px;" (click)="triggerSimulation()">
+            <i class="fa-solid fa-bolt"></i> Create Simulated Grid Fault
+          </button>
+
+          <hr style="border-color: var(--border); margin: 12px 0;" />
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <b>Autonomous Fault Engine Mode</b>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Periodically generates faults based on AI risk score</div>
+            </div>
+            <button [class]="isAutonomousSim ? 'btn btn-danger' : 'btn btn-primary'" (click)="toggleAutonomous()">
+              {{ isAutonomousSim ? 'Stop Autonomous' : 'Enable Autonomous' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pre-Creation Meter Impact Analysis -->
+      <div *ngIf="simImpactAnalysis" style="background: var(--bg-secondary); padding: 20px; border-radius: 8px; border: 1px solid var(--border);">
+        <h3>Pre-Creation Impact Assessment</h3>
+
+        <div class="stat-grid" style="margin-top: 16px;">
+          <div class="stat-card">
+            <div class="stat-label">Predicted Affected Meters</div>
+            <div class="stat-value" style="color: var(--accent-red)">{{ simImpactAnalysis.affectedMetersCount }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Critical Customers</div>
+            <div class="stat-value" style="color: var(--accent-amber)">{{ simImpactAnalysis.criticalCustomersAffected }}</div>
+          </div>
+          <div class="stat-card" style="grid-column: span 2;">
+            <div class="stat-label">Estimated Financial Exposure</div>
+            <div class="stat-value" style="color: var(--accent-emerald)">${{ simImpactAnalysis.estimatedRevenueLossPerDay }} / day</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; background: var(--bg-card); padding: 12px; border-radius: 6px;">
+          <div><b>Calculated Severity:</b> <span class="badge badge-critical">{{ simImpactAnalysis.priority }}</span></div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">{{ simImpactAnalysis.priorityExplanation }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 5: HOTSPOT & RISK -->
+  <div class="main-content" *ngIf="activeTab === 'hotspot'" style="padding: 24px; overflow-y: auto;">
+    <h2><i class="fa-solid fa-fire-flame-curved" style="color: var(--accent-red)"></i> Predictive Grid Risk & Hotspot Analytics</h2>
+
+    <div style="margin-top: 16px; background: var(--bg-secondary); padding: 18px; border-radius: 8px; border: 1px solid var(--border);">
+      <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        <label>Hotspot Metric:</label>
+        <select [(ngModel)]="hotspotMetric" (change)="loadHotspots()" style="padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border); color: #fff; border-radius: 4px;">
+          <option value="customer_impact">Affected Household Count</option>
+          <option value="revenue_loss">Financial Revenue Exposure ($)</option>
+          <option value="priority">AI Priority Score</option>
+        </select>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted);">
+            <th style="padding: 8px;">Asset ID</th>
+            <th>Name</th>
+            <th>Coordinates</th>
+            <th>Affected Meters</th>
+            <th>Critical Customers</th>
+            <th>Financial Exposure</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let h of hotspotsData" style="border-bottom: 1px solid #334155;">
+            <td style="padding: 10px; font-weight: 700; color: var(--accent-cyan);">{{ h.assetId }}</td>
+            <td>{{ h.name }}</td>
+            <td>({{ h.latitude.toFixed(3) }}, {{ h.longitude.toFixed(3) }})</td>
+            <td style="font-weight: 700; color: var(--accent-red);">{{ h.affectedMeters }}</td>
+            <td>{{ h.criticalCount }}</td>
+            <td style="color: var(--accent-emerald);">${{ h.revenueLoss }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB 6: ADMIN METER IMPORT -->
+  <div class="main-content" *ngIf="activeTab === 'admin'" style="padding: 24px; overflow-y: auto;">
+    <h2><i class="fa-solid fa-file-import" style="color: var(--accent-cyan)"></i> Admin GIS Smart Meter Import Facility</h2>
+    <p style="color: var(--text-muted); margin-top: 4px;">Import JSON/CSV meter records with latitude, longitude, and network transformer associations.</p>
+
+    <div style="margin-top: 20px; background: var(--bg-secondary); padding: 20px; border-radius: 8px; border: 1px solid var(--border); max-width: 800px;">
+      <textarea [(ngModel)]="importText" rows="10" placeholder='[{"meter_id": "M9001", "category": "RESIDENTIAL", "latitude": -17.751, "longitude": 31.152, "transformer_id": "T-104"}]' style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: #fff; padding: 12px; border-radius: 6px; font-family: monospace;"></textarea>
+
+      <button class="btn btn-primary" style="margin-top: 12px;" (click)="submitImport()">
+        <i class="fa-solid fa-upload"></i> Process GIS Batch Import
+      </button>
+
+      <div *ngIf="importReport" style="margin-top: 16px; background: var(--bg-card); padding: 14px; border-radius: 6px;">
+        <h4 style="color: var(--accent-emerald);"><i class="fa-solid fa-circle-check"></i> Import Execution Report:</h4>
+        <ul style="margin-top: 8px; font-size: 0.85rem; list-style: none;">
+          <li>Records Received: {{ importReport.recordsReceived }}</li>
+          <li>Successfully Imported: <b>{{ importReport.imported }}</b></li>
+          <li>Duplicate Meter IDs: {{ importReport.duplicates }}</li>
+          <li>Invalid Geometry: {{ importReport.invalidGeometry }}</li>
+          <li>Missing Transformer Warnings: {{ importReport.missingTransformer }}</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
